@@ -94,10 +94,11 @@ music-key-detection/
 │
 ├── frontend/
 │   ├── src/
-│   │   ├── pages/
 │   │   ├── components/
-│   │   ├── socket.js
-│   │   └── App.js
+│   │   ├── Home.jsx
+│   │   ├── Live.jsx
+│   │   ├── Upload.jsx
+│   │   └── socket.js
 │   │
 │   └── public/
 │
@@ -107,6 +108,7 @@ music-key-detection/
 │   │   ├── core.py
 │   │   └── state.py
 │   │
+│   ├── requirements.txt
 │   └── server.py
 │
 └── README.md
