@@ -1,4 +1,4 @@
-# 🎵 Music Key Detection
+# 🎵 Music Key Analyser
 
 A real-time music key detection web application that analyzes uploaded audio files or live microphone input and predicts the musical key being sung or played.
 
