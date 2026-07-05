@@ -16,5 +16,5 @@ jobs:
         uses: huggingface/hub-sync@v0.1.0
         with:
           github_repo_id: ${{ github.repository }}
-          huggingface_repo_id: SOU61204/SOU61204/music-key-analyser-backend
+          huggingface_repo_id: SOU61204/music-key-analyser-backend
           hf_token: ${{ secrets.HF_TOKEN }}
