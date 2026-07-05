@@ -1,3 +1,8 @@
+/* --- GLOBAL FIX --- */
+* {
+  box-sizing: border-box; /* Prevents padding from causing horizontal screen overflow */
+}
+
 body, html {
   margin: 0;
   padding: 0;
@@ -5,7 +10,7 @@ body, html {
 }
 
 .app {
-  height: 100vh;
+  min-height: 100vh; /* Changed from height to min-height so content can stack and scroll on phones */
   background: url('../public/bg.png') no-repeat center center/cover;
   display: flex;
   align-items: center;
@@ -13,8 +18,6 @@ body, html {
 }
 
 .overlay {
-  text-align: center;
-  color: white;
   text-align: center;
   color: white;
   padding: 40px;
@@ -137,7 +140,6 @@ body, html {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-
   background: rgba(0, 0, 0, 0.65);
 }
 
@@ -158,7 +160,6 @@ body, html {
 
 .result-right{
     width:170px;
-
     display:flex;
     justify-content:center;
     align-items:center;
@@ -184,4 +185,65 @@ body, html {
 .result-value{
     font-size:1.2rem;
     font-weight:700;
+}
+
+
+/* ========================================== */
+/* --- MOBILE RESPONSIVE MEDIA QUERY ---      */
+/* ========================================== */
+@media (max-width: 768px) {
+  .app {
+    padding: 30px 10px; /* Gives padding at the top and bottom when cards stack */
+    align-items: flex-start; /* Allows scrolling from the top naturally */
+  }
+
+  .overlay {
+    padding: 10px;
+  }
+
+  .title {
+    font-size: 2.4rem; /* Shrinks the massive title so it fits on tiny phone screens */
+  }
+
+  .subtitle {
+    font-size: 1.2rem;
+  }
+
+  .card-container {
+    flex-direction: column; /* Stacks your 'Live' and 'Upload' choice cards vertically */
+    align-items: center;
+    gap: 20px;
+    margin-top: 30px;
+  }
+
+  /* Make containers fluid so they don't clip on screens thinner than 320px */
+  .card {
+    width: 90vw;
+    max-width: 260px;
+  }
+
+  .upload-card, 
+  .upload-button, 
+  .result-card {
+    width: 90vw;
+    max-width: 320px;
+  }
+
+  /* Redesign the layout inside the result box so text doesn't squish horizontally */
+  .result-layout {
+    flex-direction: column; 
+    align-items: center;
+    gap: 15px;
+  }
+
+  .result-divider {
+    width: 80%;
+    height: 1px; /* Changes the vertical divider line into a horizontal one */
+    margin: 10px 0;
+  }
+
+  .result-right {
+    width: 100%;
+    text-align: center;
+  }
 }
