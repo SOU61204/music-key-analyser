@@ -1,6 +1,11 @@
 import { useState } from "react";
 import "./App.css";
 
+// Automatically switches backend based on where you are viewing the frontend
+const API_BASE_URL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+  ? "http://127.0.0.1:8000"
+  : "https://sou61204-music-key-analyser-backend.hf.space";
+
 function Upload() {
   const [file, setFile] = useState(null);
   const [result, setResult] = useState(null);
@@ -16,12 +21,10 @@ function Upload() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:8000/analyze",
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
+        `${API_BASE_URL}/analyze`, {
+        method: "POST",
+        body: formData,
+      });
 
       const data = await response.json();
       setResult(data);

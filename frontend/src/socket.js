@@ -1,7 +1,12 @@
 import MicrophoneStreamer from "./audio/microphone";
 
 export function createSocket(onMessage) {
-  const socket = new WebSocket("ws://127.0.0.1:8000/ws");
+  // Automatically switch WebSocket protocols based on your environment
+  const WS_URL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+    ? "ws://127.0.0.1:8000/ws"
+    : "wss://sou61204-music-key-analyser-backend.hf.space/ws";
+
+  const socket = new WebSocket(WS_URL);
 
   // We are sending binary Float32 PCM
   socket.binaryType = "arraybuffer";

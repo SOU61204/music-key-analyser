@@ -36,7 +36,7 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://music-key-analyser-frontend.onrender.com",
+        "https://SOU61204.github.io",
         "http://localhost:3000",
         "http://127.0.0.1:3000"
     ],
