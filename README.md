@@ -1,3 +1,12 @@
+---
+title: Music Key Analyser
+emoji: 🎹
+colorFrom: indigo
+colorTo: blue
+sdk: docker
+app_port: 7860
+---
+
 # 🎵 Music Key Analyser
 
 A full-stack web application that detects the **musical key** and **tempo (BPM)** of audio files, while also providing **real-time key detection** from live microphone input using WebSockets.
