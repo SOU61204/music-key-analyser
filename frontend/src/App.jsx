@@ -6,7 +6,7 @@ import Upload from "./Upload";
 
 function App() {
   return (
-    <Router>
+    <Router basename="/music-key-analyser">
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/live" element={<Live />} />
