@@ -30,9 +30,9 @@ class MicrophoneStreamer {
       this.inputRate
     );
 
-    // Load the AudioWorklet processor
+    // Load the AudioWorklet processor dynamically based on environment base URL
     await this.audioContext.audioWorklet.addModule(
-      "/audio/recorder-worklet.js"
+      `${process.env.PUBLIC_URL}/audio/recorder-worklet.js`
     );
 
     this.microphone =
