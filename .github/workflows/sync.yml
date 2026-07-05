@@ -3,20 +3,18 @@ name: Sync to Hugging Face Hub
 on:
   push:
     branches: [main]
-  workflow_dispatch: # Allows you to manually trigger the sync from the GitHub UI if needed
+  workflow_dispatch:
 
 jobs:
   sync-to-hub:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-          lfs: true
+        uses: actions/checkout@v4
 
-      - name: Push to Hugging Face Spaces
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: |
-          git push -f https://SOU61204:$HF_TOKEN@huggingface.co/spaces/SOU61204/music-key-analyser-backend main
+      - name: Push to Hub
+        uses: huggingface/hub-sync@v0.1.0
+        with:
+          github_repo_id: ${{ github.repository }}
+          huggingface_repo_id: SOU61204/SOU61204/music-key-analyser-backend
+          hf_token: ${{ secrets.HF_TOKEN }}
