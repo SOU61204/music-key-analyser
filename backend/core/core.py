@@ -1,103 +1,193 @@
 import librosa
 import numpy as np
 
-# Note names
-NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F',
-              'F#', 'G', 'G#', 'A', 'A#', 'B']
+# ==========================================================
+# Constants
+# ==========================================================
 
-# Scale templates (1 = note present, 0 = absent)
-MAJOR_TEMPLATE = np.array([1, 0, 1, 0, 1, 1, 0,
-                           1, 0, 1, 0, 1])
+RATE = 22050
 
-MINOR_TEMPLATE = np.array([1, 0, 1, 1, 0, 1, 0,
-                           1, 1, 0, 1, 0])
+NOTE_NAMES = [
+    "C","C#","D","D#","E","F",
+    "F#","G","G#","A","A#","B"
+]
+
+# Krumhansl-Schmuckler Profiles
+
+KS_MAJOR = np.array([
+    6.35,2.23,3.48,2.33,
+    4.38,4.09,2.52,5.19,
+    2.39,3.66,2.29,2.88
+])
+
+KS_MINOR = np.array([
+    6.33,2.68,3.52,5.38,
+    2.60,3.53,2.54,4.75,
+    3.98,2.69,3.34,3.17
+])
+
+# ==========================================================
+# Feature Extraction
+# ==========================================================
+
+def extract_pitch(audio):
+
+    f0 = librosa.yin(
+        audio,
+        fmin=80,
+        fmax=400
+    )
+
+    return f0[f0 > 0]
 
 
-def extract_pitch(y, sr):
-    """Extract pitch using librosa YIN"""
-    f0 = librosa.yin(y, fmin=80, fmax=400)
-    
-    # Remove unvoiced / invalid values
-    f0 = f0[f0 > 0]
-    
-    return f0
+def pitch_classes(f0):
+
+    midi = (
+        69 +
+        12 * np.log2(f0 / 440)
+    )
+
+    return (
+        np.floor(midi + 0.5).astype(int)
+    ) % 12
 
 
-def freq_to_pitch_class(frequencies):
-    """Convert frequency (Hz) → pitch class (0–11)"""
-    midi = 69 + 12 * np.log2(frequencies / 440.0)
-    pitch_classes = np.round(midi) % 12
-    return pitch_classes.astype(int)
+def pitch_histogram(pc):
 
+    hist, _ = np.histogram(
+        pc,
+        bins=12,
+        range=(0,12)
+    )
 
-def build_histogram(pitch_classes):
-    """Build normalized histogram of pitch classes"""
-    hist, _ = np.histogram(pitch_classes, bins=12, range=(0, 12))
-    
-    if np.sum(hist) == 0:
+    if np.sum(hist)==0:
         return hist
-    
+
     return hist / np.sum(hist)
 
+# ==========================================================
+# Krumhansl-Schmuckler
+# ==========================================================
 
-def rotate_histogram(hist, steps):
-    """Rotate histogram for trying different roots"""
-    return np.roll(hist, -steps)
+def detect_key_from_hist(hist):
 
+    scores = []
 
-def compute_score(hist, template):
-    """Compute similarity score"""
-    return np.dot(hist, template)
-
-
-def detect_key(file_path):
-    # Step 1: Load audio
-    y, sr = librosa.load(file_path)
-
-    # Step 2: Extract pitch
-    f0 = extract_pitch(y, sr)
-
-    if len(f0) == 0:
-        return "No pitch detected", 0.0
-
-    # Step 3: Convert to pitch classes
-    pitch_classes = freq_to_pitch_class(f0)
-
-    # Step 4: Build histogram
-    hist = build_histogram(pitch_classes)
-
-    best_score = -1
-    best_key = None
-    best_scale = None
-
-    # Step 5: Try all 12 roots
     for i in range(12):
-        rotated = rotate_histogram(hist, i)
 
-        major_score = compute_score(rotated, MAJOR_TEMPLATE)
-        minor_score = compute_score(rotated, MINOR_TEMPLATE)
+        rotated = np.roll(hist,-i)
 
-        if major_score > best_score:
-            best_score = major_score
-            best_key = NOTE_NAMES[i]
-            best_scale = "Major"
+        major = np.dot(
+            rotated,
+            KS_MAJOR
+        )
 
-        if minor_score > best_score:
-            best_score = minor_score
-            best_key = NOTE_NAMES[i]
-            best_scale = "Minor"
+        minor = np.dot(
+            rotated,
+            KS_MINOR
+        )
 
-    # Normalize confidence (rough)
-    confidence = float(best_score / np.sum(hist))
+        scores.append(
+            (
+                major,
+                f"{NOTE_NAMES[i]} Major"
+            )
+        )
 
-    return f"{best_key} {best_scale}", confidence
+        scores.append(
+            (
+                minor,
+                f"{NOTE_NAMES[i]} Minor"
+            )
+        )
 
+    scores.sort(
+        reverse=True,
+        key=lambda x:x[0]
+    )
 
-if __name__ == "__main__":
-    file_path = input("Enter path to audio file: ")
+    best = scores[0]
+    second = scores[1]
+
+    confidence = (
+        (best[0]-second[0])
+        /
+        (best[0]+1e-6)
+    )
+
+    confidence = float(
+
+        np.clip(
+
+            confidence*100,
+
+            0,
+
+            100
+
+        )
+
+    )
+
+    return best[1], confidence
+
+# ==========================================================
+# Live Audio
+# ==========================================================
+
+def detect_key_from_frame(audio):
+
+    rms = np.sqrt(np.mean(audio ** 2))
+
+    if rms < 0.01:
+        return "Listening...", 0.0
+
+    f0 = extract_pitch(audio)
+
+    voiced = f0[f0 > 0]
+
+    MIN_VOICED_FRAMES = 80
+
+    if len(voiced) < MIN_VOICED_FRAMES:
+        return "Listening...", 0.0
     
-    key, confidence = detect_key(file_path)
+    median_pitch = np.median(voiced)
+
+    if median_pitch < 80:
+        return "Listening...", 0.0
+
+    if median_pitch > 600:
+        return "Listening...", 0.0
     
-    print("\n🎵 Result:")
-    print("Detected Key:", key)
-    print("Confidence:", round(confidence, 3))
+    pitch_std = np.std(voiced)
+
+    if pitch_std < 1.5:
+        return "Listening...", 0.0
+
+    if len(f0) < 50:
+
+        return (
+            "Listening...",
+            0.0
+        )
+
+    pc = pitch_classes(f0)
+
+    hist = pitch_histogram(pc)
+
+    return detect_key_from_hist(hist)
+
+# ==========================================================
+# Uploaded File
+# ==========================================================
+
+def detect_key_from_audio(path):
+
+    audio, _ = librosa.load(
+        path,
+        sr=RATE,
+        mono=True
+    )
+
+    return detect_key_from_frame(audio)

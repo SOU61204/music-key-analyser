@@ -1,6 +1,10 @@
 fastapi
-uvicorn[standard]
+uvicorn
 numpy
 librosa
-sounddevice
+soundfile
+scipy
+audioread
+ffmpeg-python
 python-multipart
+imageio-ffmpeg

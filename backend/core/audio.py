@@ -1,373 +1,177 @@
-import numpy as np
-import librosa
-import sounddevice as sd
-import threading
-import time
+"""
+audio.py
 
-from core.state import update_state
+Per-user audio session.
+
+Each WebSocket connection owns its own AudioSession,
+so multiple users can stream simultaneously without
+sharing buffers.
+"""
+
+import threading
+import numpy as np
+
+# ==========================================================
+# Configuration
+# ==========================================================
 
 RATE = 22050
 
 WINDOW_SECONDS = 15
-HOP_SECONDS = 4
+
+PROCESS_WINDOW = 5
 
 BUFFER_SIZE = RATE * WINDOW_SECONDS
 
-audio_buffer = np.zeros(
-    BUFFER_SIZE,
-    dtype=np.float32
-)
 
-buffer_lock = threading.Lock()
+# ==========================================================
+# Audio Session
+# ==========================================================
 
-# Audio engine state
-audio_stream = None
-audio_running = False
+class AudioSession:
 
-NOTE_NAMES = [
-    'C', 'C#', 'D', 'D#', 'E', 'F',
-    'F#', 'G', 'G#', 'A', 'A#', 'B'
-]
+    def __init__(self):
 
-# Krumhansl-Schmuckler Profiles
-KS_MAJOR = np.array([
-    6.35, 2.23, 3.48, 2.33,
-    4.38, 4.09, 2.52, 5.19,
-    2.39, 3.66, 2.29, 2.88
-])
-
-KS_MINOR = np.array([
-    6.33, 2.68, 3.52, 5.38,
-    2.60, 3.53, 2.54, 4.75,
-    3.98, 2.69, 3.34, 3.17
-])
-
-
-def detect_key_from_hist(hist):
-
-    scores = []
-
-    for i in range(12):
-
-        rotated = np.roll(hist, -i)
-
-        major_score = np.dot(
-            rotated,
-            KS_MAJOR
+        self.buffer = np.zeros(
+            BUFFER_SIZE,
+            dtype=np.float32
         )
 
-        minor_score = np.dot(
-            rotated,
-            KS_MINOR
+        self.lock = threading.Lock()
+
+    # ------------------------------------------------------
+    # Append audio
+    # ------------------------------------------------------
+
+    def append_chunk(
+        self,
+        chunk: np.ndarray
+    ):
+
+        if len(chunk) == 0:
+            return
+
+        chunk = np.asarray(
+            chunk,
+            dtype=np.float32
         )
 
-        tonic = rotated[0]
-        dominant = rotated[7]
+        with self.lock:
 
-        major_third = rotated[4]
-        minor_third = rotated[3]
+            n = len(chunk)
 
-        # Strong tonic weighting
-        major_score += tonic * 10
-        major_score += dominant * 3
+            if n >= BUFFER_SIZE:
 
-        minor_score += tonic * 10
-        minor_score += dominant * 3
+                self.buffer[:] = chunk[-BUFFER_SIZE:]
 
-        third_total = (
-            major_third +
-            minor_third
-        )
+                return
 
-        if third_total > 0.05:
+            self.buffer = np.roll(
+                self.buffer,
+                -n
+            )
 
-            major_score += (
-                major_third /
-                third_total
-            ) * 4
+            self.buffer[-n:] = chunk
 
-            minor_score += (
-                minor_third /
-                third_total
-            ) * 4
+    # ------------------------------------------------------
+    # Read latest audio
+    # ------------------------------------------------------
 
-        if tonic < 0.08:
-            major_score *= 0.75
-            minor_score *= 0.75
+    def get_recent_audio(
+        self,
+        seconds=PROCESS_WINDOW
+    ):
 
-        scores.append(
-            (
-                major_score,
-                f"{NOTE_NAMES[i]} Major"
+        samples = int(seconds * RATE)
+
+        with self.lock:
+
+            return self.buffer[-samples:].copy()
+
+    # ------------------------------------------------------
+    # Voice Detection
+    # ------------------------------------------------------
+
+    @staticmethod
+    def rms(audio):
+
+        if len(audio) == 0:
+            return 0.0
+
+        return float(
+            np.sqrt(
+                np.mean(audio ** 2)
             )
         )
 
-        scores.append(
-            (
-                minor_score,
-                f"{NOTE_NAMES[i]} Minor"
-            )
-        )
+    def has_voice(
+        self,
+        audio,
+        threshold=0.02
+    ):
+        """
+        Voice Activity Detection.
 
-    scores.sort(
-        key=lambda x: x[0],
-        reverse=True
-    )
+        Uses both RMS and Zero Crossing Rate to reject
+        fan noise / AC noise / hum.
+        """
 
-    best_score = scores[0][0]
-    second_score = scores[1][0]
+        rms = self.rms(audio)
 
-    best_key = scores[0][1]
+        if rms < threshold:
+            return False
 
-    # Confidence based on score separation
-    confidence = (
-        (best_score - second_score)
-        / (best_score + 1e-6)
-    )
-
-    confidence = np.clip(
-        confidence * 100,
-        0,
-        100
-    )
-
-    return best_key, float(confidence)
-
-
-def audio_callback(
-    indata,
-    frames,
-    time_info,
-    status
-):
-    global audio_buffer
-
-    if status:
-        print("Audio Status:", status)
-
-    chunk = indata[:, 0]
-
-    with buffer_lock:
-
-        audio_buffer = np.roll(
-            audio_buffer,
-            -len(chunk)
-        )
-
-        audio_buffer[-len(chunk):] = chunk
-
-
-def processing_loop():
-
-    global audio_buffer
-    global audio_running
-
-    global_hist = np.zeros(12)
-
-    print("🎵 Processing thread started")
-
-    while audio_running:
-
-        time.sleep(HOP_SECONDS)
-
-        with buffer_lock:
-
-            frame = audio_buffer[
-                -RATE * 5:
-            ].copy()
-
-        try:
-
-            # ----------------------------------
-            # Vocal Activity Detection
-            # ----------------------------------
-
-            rms = np.sqrt(
-                np.mean(frame ** 2)
-            )
-
-            print(
-                f"🔊 RMS: {rms:.5f}"
-            )
-
-            if rms < 0.01:
-
-                print(
-                    "🔇 No singing detected"
-                )
-
-                continue
-
-            f0 = librosa.yin(
-                frame,
-                fmin=80,
-                fmax=400
-            )
-
-            f0 = f0[f0 > 0]
-
-            print(
-                f"Detected pitches: {len(f0)}"
-            )
-
-            # Ignore weak detections
-            if len(f0) < 80:
-
-                print(
-                    "⚠️ Not enough vocal content"
-                )
-
-                continue
-
-            midi = (
-                69 +
-                12 *
-                np.log2(f0 / 440)
-            )
-
-            pitch_classes = (
-                np.floor(
-                    midi + 0.5
-                )
-            ) % 12
-
-            local_hist, _ = np.histogram(
-                pitch_classes,
-                bins=12,
-                range=(0, 12)
-            )
-
-            if np.sum(local_hist) == 0:
-
-                print(
-                    "⚠️ Empty histogram"
-                )
-
-                continue
-
-            local_hist = (
-                local_hist /
-                np.sum(local_hist)
-            )
-
-            # Long-term memory
-            global_hist = (
-                0.95 * global_hist +
-                0.05 * local_hist
-            )
-
-            global_hist_norm = (
-                global_hist /
-                (
-                    np.sum(global_hist)
-                    + 1e-6
+        zcr = np.mean(
+            np.abs(
+                np.diff(
+                    np.sign(audio)
                 )
             )
-
-            combined = (
-                0.6 * global_hist_norm +
-                0.4 * local_hist
-            )
-
-            key, confidence = (
-                detect_key_from_hist(
-                    combined
-                )
-            )
-
-            print(
-                f"🎼 Detected Key: {key}"
-            )
-
-            print(
-                f"📊 Confidence: "
-                f"{confidence:.1f}%"
-            )
-
-            update_state(
-                key,
-                confidence
-            )
-
-        except Exception as e:
-
-            print(
-                "❌ Processing Error:"
-            )
-
-            print(e)
-
-    print(
-        "🛑 Processing thread stopped"
-    )
-
-
-def start_audio_stream():
-
-    global audio_stream
-    global audio_running
-
-    if audio_running:
-
-        print(
-            "⚠️ Audio engine already running"
         )
 
-        return
+        if zcr < 0.01:
+            return False
 
-    try:
+        return True
 
-        print(
-            "🎤 Initializing microphone..."
-        )
+    # ------------------------------------------------------
+    # Utilities
+    # ------------------------------------------------------
 
-        audio_running = True
+    def clear(self):
 
-        audio_stream = sd.InputStream(
-            samplerate=RATE,
-            channels=1,
-            callback=audio_callback,
-            blocksize=1024
-        )
+        with self.lock:
 
-        audio_stream.start()
+            self.buffer[:] = 0
 
-        print(
-            "✅ Microphone stream started"
-        )
+    @property
+    def duration(self):
 
-        threading.Thread(
-            target=processing_loop,
-            daemon=True
-        ).start()
+        return WINDOW_SECONDS
 
-    except Exception as e:
+    @property
+    def samples(self):
 
-        print(
-            "❌ Audio Stream Error:"
-        )
-
-        print(e)
+        return BUFFER_SIZE
 
 
-def stop_audio_stream():
+# ==========================================================
+# Factory
+# ==========================================================
 
-    global audio_stream
-    global audio_running
+def create_session():
 
-    print(
-        "🛑 Stopping audio engine..."
-    )
+    return AudioSession()
 
-    audio_running = False
 
-    if audio_stream is not None:
+# ==========================================================
+# Debug
+# ==========================================================
 
-        audio_stream.stop()
-        audio_stream.close()
+if __name__ == "__main__":
 
-        audio_stream = None
+    session = create_session()
 
-    print(
-        "✅ Audio engine stopped"
-    )
+    print("Buffer Duration :", session.duration)
+
+    print("Buffer Samples  :", session.samples)

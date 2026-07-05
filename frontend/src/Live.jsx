@@ -12,21 +12,23 @@ function Live() {
   });
 
   useEffect(() => {
-    const socket = createSocket();
 
-    socket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+    const socket = createSocket((data) => {
 
       console.log("Updating React state:", data);
 
       setKeyData(data);
-    };
+
+    });
 
     return () => {
+
       console.log("🛑 Leaving Live page");
 
       socket.close();
+
     };
+
   }, []);
 
   console.log("Current state:", keyData);

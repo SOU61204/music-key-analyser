@@ -9,29 +9,35 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 
 import asyncio
-import threading
-import traceback
+import numpy as np
 import tempfile
 import os
+import traceback
 
 from core.audio import (
-    start_audio_stream,
-    stop_audio_stream
+    RATE,
+    create_session
 )
 
-from core.state import get_state
-from core.core import detect_key
+from core.core import (
+    detect_key_from_audio,
+    detect_key_from_frame
+)
+
+from core.media import (
+    normalize_audio,
+    cleanup_temp_file
+)
+
+from core.bpm import detect_bpm
 
 app = FastAPI()
 
-# Track live users
-active_connections = 0
-audio_started = False
-
-# Allow React frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -40,110 +46,179 @@ app.add_middleware(
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    global active_connections
-    global audio_started
 
     await websocket.accept()
 
-    active_connections += 1
+    print("✅ Browser connected")
 
-    print(
-        f"✅ WebSocket connected "
-        f"({active_connections} active)"
-    )
+    session = create_session()
 
-    # Start audio engine on first connection
-    if not audio_started:
-        try:
-            print("🎤 Starting audio engine...")
+    last_analysis = asyncio.get_event_loop().time()
 
-            threading.Thread(
-                target=start_audio_stream,
-                daemon=True
-            ).start()
+    ANALYSIS_INTERVAL = 2.0   # seconds
 
-            audio_started = True
-
-            print("✅ Audio thread launched")
-
-        except Exception:
-            print("❌ AUDIO ENGINE ERROR")
-            traceback.print_exc()
+    last_key = "Listening..."
+    last_confidence = 0.0
 
     try:
+
         while True:
-            state = get_state()
 
-            await websocket.send_json(state)
+            audio_bytes = await websocket.receive_bytes()
 
-            await asyncio.sleep(0.5)
+            chunk = np.frombuffer(audio_bytes, dtype=np.float32)
+
+            session.append_chunk(chunk)
+
+            print(f"Chunk: {len(chunk)} samples")
+
+            now = asyncio.get_event_loop().time()
+
+            should_analyze = (now - last_analysis >= ANALYSIS_INTERVAL)
+
+            if should_analyze:
+
+                last_analysis = now
+
+                frame = session.get_recent_audio(5)
+
+                print("Frame RMS:", session.rms(frame))
+                print("Voice:", session.has_voice(frame))
+
+                frame = session.get_recent_audio(5)
+
+                key, confidence = last_key, last_confidence
+
+                try:
+                        voice = session.has_voice(frame)
+                        print("Voice:", voice)
+                        print("Running key detection...")
+
+                        detected_key, detected_conf = detect_key_from_frame(frame)
+
+                        if detected_key is not None:
+
+                            key = detected_key
+                            confidence = detected_conf
+
+                            last_key = key
+                            last_confidence = confidence
+
+                except Exception:
+                    traceback.print_exc()
+
+            # 🔥 ALWAYS SEND STATE (THIS IS THE FIX)
+            payload = {
+                "key": last_key,
+                "confidence": last_confidence,
+            }
+
+            print(">>> Sending to frontend:", payload)
+
+            await websocket.send_json(payload)
 
     except WebSocketDisconnect:
 
-        active_connections -= 1
+        print("🔌 Browser disconnected")
 
-        print(
-            f"🔌 WebSocket disconnected "
-            f"({active_connections} active)"
-        )
+        session.clear()
 
-        # Stop audio when nobody is using Live mode
-        if active_connections <= 0:
+        del session
 
-            stop_audio_stream()
+    except Exception as e:
 
-            audio_started = False
+        print("❌ WebSocket Error")
 
-    except Exception:
-
-        print("❌ WEBSOCKET ERROR")
         traceback.print_exc()
 
+        # Free this client's audio session
+        session.clear()
+
+        del session
+
+        try:
+            await websocket.close()
+        except:
+            pass
 
 @app.post("/analyze")
-async def analyze_audio(file: UploadFile = File(...)):
-    try:
-        print(f"📁 Received file: {file.filename}")
+async def analyze_audio(
+    file: UploadFile = File(...)
+):
+    temp_path = None
+    wav_path = None
 
-        suffix = os.path.splitext(file.filename)[1]
+    try:
+
+        suffix = os.path.splitext(
+            file.filename
+        )[1]
 
         with tempfile.NamedTemporaryFile(
             delete=False,
             suffix=suffix
-        ) as temp_file:
+        ) as temp:
 
-            content = await file.read()
-            temp_file.write(content)
+            temp.write(
+                await file.read()
+            )
 
-            temp_path = temp_file.name
+            temp_path = temp.name
 
-        print("🎵 Running key detection...")
+        # --------------------------------------
+        # Normalize uploaded media
+        # Supports:
+        # mp3, wav, mp4, m4a, flac, ogg, ...
+        # --------------------------------------
 
-        key, confidence = detect_key(temp_path)
+        wav_path = normalize_audio(
+            temp_path
+        )
 
-        os.remove(temp_path)
+        # --------------------------------------
+        # Run key detection on normalized WAV
+        # --------------------------------------
 
-        print("✅ Analysis complete")
-        print("Key:", key)
-        print("Confidence:", confidence)
+        key, confidence = detect_key_from_audio(
+            wav_path
+        )
+
+        bpm = detect_bpm(
+            wav_path
+        )
 
         return {
+
             "key": key,
-            "confidence": confidence
+
+            "confidence": confidence,
+
+            "bpm": bpm
+
         }
 
     except Exception as e:
 
-        print("❌ ANALYSIS ERROR")
         traceback.print_exc()
 
         return {
+
             "error": str(e)
+
         }
+
+    finally:
+
+        cleanup_temp_file(temp_path)
+
+        cleanup_temp_file(wav_path)
 
 
 @app.get("/")
 def root():
+
     return {
+
         "status": "running"
+
     }

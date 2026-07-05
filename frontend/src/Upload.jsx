@@ -53,12 +53,12 @@ function Upload() {
             {file ? (
               <p>{file.name}</p>
             ) : (
-              <p>Select MP3, WAV, FLAC or M4A</p>
+              <p>Select MP3, MP4, WAV, FLAC or M4A</p>
             )}
 
             <input
               type="file"
-              accept=".mp3,.wav,.flac,.m4a"
+              accept=".mp3,.mp4,.wav,.flac,.m4a"
               style={{ display: "none" }}
               onChange={(e) => {
                 setFile(e.target.files[0]);
@@ -76,12 +76,37 @@ function Upload() {
               "Analyzing..."
             ) : result ? (
               <>
-                <div style={{ fontSize: "1.4rem", fontWeight: "bold" }}>
-                  🎵 {result.key}
-                </div>
+                <div className="result-layout">
 
-                <div style={{ marginTop: "8px" }}>
-                  Confidence: {result.confidence?.toFixed(2)}
+                  <div className="result-left">
+
+                    <div className="result-row">
+                      <span className="result-label">Key:</span>
+                      <span className="result-value">{result.key}</span>
+                    </div>
+
+                    <div className="result-row">
+                      <span className="result-label">Confidence:</span>
+                      <span className="result-value">
+                        {result.confidence?.toFixed(2)}
+                      </span>
+                    </div>
+
+                  </div>
+
+                  <div className="result-divider"></div>
+
+                  <div className="result-right">
+
+                    <div className="result-row">
+                      <span className="result-label">BPM:</span>
+                      <span className="result-value">
+                        {result.bpm?.toFixed(1)}
+                      </span>
+                    </div>
+
+                  </div>
+
                 </div>
               </>
             ) : (

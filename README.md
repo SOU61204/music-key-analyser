@@ -1,113 +1,139 @@
 # 🎵 Music Key Analyser
 
-A real-time music key detection web application that analyzes uploaded audio files or live microphone input and predicts the musical key being sung or played.
+A full-stack web application that detects the **musical key** and **tempo (BPM)** of audio files, while also providing **real-time key detection** from live microphone input using WebSockets.
+
+---
 
 ## Features
 
 * 🎤 Real-time microphone key detection
-* 📁 Audio file upload and analysis
+* 📁 Upload audio files for analysis
 * 🎼 Major and Minor key recognition
+* 🥁 BPM (Tempo) detection
 * 📊 Confidence scoring
-* 🔄 Live updates through WebSockets
-* 🎹 Krumhansl-Schmuckler based key estimation
-* 🌐 Full-stack web interface
+* 🔄 Live updates using WebSockets
+* 🎹 Krumhansl-Schmuckler key estimation
+* 🌐 Full-stack React + FastAPI application
+* 🎧 Browser-based microphone streaming (AudioWorklet)
+* 📀 Supports MP3, WAV, MP4, FLAC, M4A and more
 
 ---
 
-## Demo Modes
+# Demo Modes
 
-### Live Detection
+## 🎤 Live Detection
 
-Uses the system microphone and continuously analyzes incoming audio to estimate the current musical key.
+The browser streams microphone audio directly to the FastAPI backend over WebSockets.
 
-### File Analysis
+Features:
+
+* Real-time key detection
+* Voice activity detection
+* Confidence-weighted temporal smoothing
+* Stable predictions with rolling analysis windows
+
+---
+
+## 📁 File Analysis
 
 Upload an audio file and receive:
 
-* Detected Key
+* Musical Key
 * Confidence Score
+* Estimated BPM (Tempo)
+
+Supported formats include:
+
+* MP3
+* WAV
+* MP4
+* M4A
+* FLAC
+* OGG
+* Most formats supported by FFmpeg
 
 ---
 
-## Tech Stack
+# Tech Stack
 
-### Frontend
+## Frontend
 
 * React
 * React Router
 * WebSockets
-* Axios
+* AudioWorklet API
+* MediaDevices API
 
-### Backend
+## Backend
 
 * FastAPI
 * Uvicorn
 * WebSockets
 
-### Audio Processing
+## Audio Processing
 
 * Librosa
 * NumPy
-* SoundDevice
+* FFmpeg (media normalization)
 
 ---
 
-## How It Works
+# How It Works
 
-### 1. Audio Capture
+## Live Detection Pipeline
 
-Audio is captured either from:
-
-* Microphone input (Live Mode)
-* Uploaded audio files
-
-### 2. Pitch Extraction
-
-The application uses Librosa's YIN pitch detection algorithm to estimate the fundamental frequency (F0) of the audio signal.
-
-### 3. Pitch Class Mapping
-
-Detected frequencies are converted into MIDI notes and then mapped to one of the 12 pitch classes:
-
-C, C#, D, D#, E, F, F#, G, G#, A, A#, B
-
-### 4. Histogram Generation
-
-A normalized pitch-class histogram is created from the detected notes.
-
-### 5. Key Detection
-
-The histogram is compared against Krumhansl-Schmuckler key profiles for all major and minor keys.
-
-The key with the highest score is selected as the predicted key.
-
-### 6. Live Updates
-
-The backend streams detection results to the frontend using WebSockets for near real-time feedback.
+1. Browser captures microphone audio.
+2. AudioWorklet streams Float32 PCM samples over WebSocket.
+3. Backend maintains a per-user rolling audio buffer.
+4. Voice Activity Detection filters silence and background noise.
+5. Librosa extracts pitch using the YIN algorithm.
+6. Pitch classes are converted into a normalized histogram.
+7. Krumhansl-Schmuckler key profiles estimate the musical key.
+8. Confidence-weighted temporal smoothing stabilizes predictions.
+9. Results are streamed back to the frontend in near real time.
 
 ---
 
-## Project Structure
+## File Analysis Pipeline
+
+1. User uploads an audio/video file.
+2. Media is normalized to WAV using FFmpeg.
+3. Pitch extraction is performed using Librosa.
+4. Musical key is estimated.
+5. BPM is estimated using Librosa's beat tracking.
+6. Results are returned as JSON.
+
+---
+
+# Project Structure
 
 ```text
-music-key-detection/
+music-key-analyser/
 │
 ├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   ├── Home.jsx
-│   │   ├── Live.jsx
-│   │   ├── Upload.jsx
-│   │   └── socket.js
+│   ├── public/
+│   │   └── audio/
+│   │       └── recorder-worklet.js
 │   │
-│   └── public/
+│   └── src/
+│       ├── audio/
+│       │   └── microphone.js
+│       ├── components/
+|       |   ├── KeyDisplay.jsx
+|       |   └── WebcamView.jsx
+│       ├── Home.jsx
+│       ├── Live.jsx
+│       ├── Upload.jsx
+│       └── socket.js
 │
 ├── backend/
 │   ├── core/
 │   │   ├── audio.py
+│   │   ├── bpm.py
 │   │   ├── core.py
+│   │   ├── media.py
 │   │   └── state.py
-│   │
+|   |
 │   ├── requirements.txt
 │   └── server.py
 │
@@ -116,18 +142,19 @@ music-key-detection/
 
 ---
 
-## Installation
+# Installation
 
-### Clone Repository
+## Clone Repository
 
 ```bash
 git clone https://github.com/SOU61204/music-key-analyser.git
+
 cd music-key-analyser
 ```
 
 ---
 
-## Backend Setup
+# Backend Setup
 
 ```bash
 cd backend
@@ -137,7 +164,7 @@ pip install -r requirements.txt
 uvicorn server:app --reload
 ```
 
-Backend runs on:
+Backend runs at
 
 ```text
 http://localhost:8000
@@ -145,7 +172,7 @@ http://localhost:8000
 
 ---
 
-## Frontend Setup
+# Frontend Setup
 
 ```bash
 cd frontend
@@ -155,7 +182,7 @@ npm install
 npm start
 ```
 
-Frontend runs on:
+Frontend runs at
 
 ```text
 http://localhost:3000
@@ -163,55 +190,55 @@ http://localhost:3000
 
 ---
 
-## API Endpoints
+# API
 
-### Analyze Uploaded Audio
+## Analyze Audio
 
 ```http
 POST /analyze
 ```
 
-Returns:
+Returns
 
 ```json
 {
   "key": "C# Minor",
-  "confidence": 0.91
+  "confidence": 0.91,
+  "bpm": 124.8
 }
 ```
 
 ---
 
-### Live WebSocket
+## Live Detection
 
 ```text
 ws://localhost:8000/ws
 ```
 
-Streams:
+Streams
 
 ```json
 {
-  "key": "C# Minor",
-  "confidence": 0.91
+  "key": "G Minor",
+  "confidence": 0.84
 }
 ```
 
 ---
 
-## Future Improvements
+# Future Improvements
 
 * 🎶 Raag Detection
 * 🎼 Scale Identification
+* 🎹 Chord Detection
+* 🎵 Melody Extraction
 * 📈 Pitch Visualization
-* 🎤 Vocal Activity Detection
 * ☁️ Cloud Deployment
+* 📱 Mobile-Friendly UI
 
 ---
 
-## License
+# License
 
 MIT License
-
-```
-```
