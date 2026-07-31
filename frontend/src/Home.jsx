@@ -9,7 +9,7 @@ function Home() {
       <div className="overlay">
 
         <h1 className="title">
-          AI - Powered Music Key Detection
+          Real-Time Music Key Detection
         </h1>
 
         <p className="subtitle">
